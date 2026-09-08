@@ -221,7 +221,10 @@ function renderTelemetry(snapshot) {
   // Once a turn completes, the last interval is normally zero because there
   // is no new token. Show the turn's average instead of a misleading 0.
   const displayCurrent = snapshot.state === "complete" ? snapshot.meanTps : liveCurrent;
-  elements.currentLabel.textContent = snapshot.state === "complete" ? "Last turn average" : "Interactive decode";
+  const waitingForFirstToken = snapshot.state === "streaming" && snapshot.decodeTokens === 0 && snapshot.ttftMs === 0;
+  elements.currentLabel.textContent = snapshot.state === "complete"
+    ? "Last turn average"
+    : waitingForFirstToken ? "Waiting for first token" : "Interactive decode";
   elements.current.textContent = `${formatNumber(displayCurrent)} est. tok/s`;
   elements.meanSpeed.textContent = formatNumber(snapshot.meanTps);
   elements.peak.textContent = formatNumber(snapshot.peakTps);
