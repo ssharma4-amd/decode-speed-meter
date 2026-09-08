@@ -80,3 +80,13 @@ export const DEFAULT_ICON = "⚡";
  * 0 = update on every delta (current behavior).
  */
 export const UPDATE_INTERVAL: number = 0;
+
+/** Inline graph defaults: 30 seconds represented by 250ms uniform samples. */
+export const GRAPH_ENABLED = true;
+export const GRAPH_HISTORY_MS = 30000;
+export const GRAPH_SAMPLE_INTERVAL = 250;
+/** Braille chart cell rows; each cell has four physical dot rows. */
+export const GRAPH_HEIGHT = 6;
+export const INCLUDE_SUBAGENTS = true;
+export const SUBAGENT_STALE_MS = 3000;
+export const SUBAGENT_RETENTION_MS = 10 * 60 * 1000;

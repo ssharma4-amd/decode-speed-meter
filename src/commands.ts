@@ -8,6 +8,7 @@ import type {
   TokenSpeedConfig,
 } from "./config-types";
 import { TokenSpeedEngine } from "./engine";
+import type { GraphController } from "./graph-widget";
 import {
   COUNT_STRATEGY_LABELS,
   DISPLAY_LABELS,
@@ -31,6 +32,7 @@ enum Options {
   END_TPS_BEHAVIOR = "endTpsBehavior",
   ICON = "icon",
   UPDATE_INTERVAL = "updateInterval",
+  GRAPH_ENABLED = "graphEnabled",
 }
 
 /**
@@ -40,6 +42,7 @@ export class CommandManager {
   constructor(
     private readonly renderer: Renderer,
     private readonly engine: TokenSpeedEngine,
+    private readonly graph: GraphController,
   ) {}
 
   /**
@@ -91,10 +94,14 @@ export class CommandManager {
       });
     } else if (id === Options.UPDATE_INTERVAL) {
       await settings.setConfig({ updateInterval: Number(newValue) });
+    } else if (id === Options.GRAPH_ENABLED) {
+      await settings.setConfig({ graphEnabled: newValue === "on" });
     }
 
-    // Re-render with the latest config
-    this.engine.initialize();
+    // Apply changed live settings without resetting a stream, counters, or
+    // graph history. Visibility alone owns widget/timer resources.
+    this.engine.updateConfig(settings.getConfig());
+    if (id === Options.GRAPH_ENABLED) this.graph.reconfigure();
     this.renderer.update(ctx);
   }
 
@@ -139,7 +146,7 @@ export class CommandManager {
         id: Options.USE_PROVIDER_TOKENS,
         label: "Use provider tokens",
         description:
-          "Use the provider's token count instead of this extension's counter",
+          "Use progressive provider usage for the live footer total when available",
         currentValue: config.useProviderTokens ? "on" : "off",
         values: Object.keys(TOGGLE_LABELS),
       },
@@ -147,7 +154,7 @@ export class CommandManager {
         id: Options.COUNT_STRATEGY,
         label: "Count strategy",
         description:
-          "Direct counting (server streams tokens) vs estimate counting (server streams chunks)",
+          "One estimated token per transport delta vs content-based estimate",
         currentValue: config.countStrategy,
         values: Object.keys(COUNT_STRATEGY_LABELS) as CountStrategy[],
       },
@@ -165,6 +172,13 @@ export class CommandManager {
         description: "Icon shown before TPS in the status bar",
         currentValue: config.icon || "(empty)",
         values: [...ICONS, "(empty)"],
+      },
+      {
+        id: Options.GRAPH_ENABLED,
+        label: "Inline speed graph",
+        description: "Show the responsive graph below the editor",
+        currentValue: config.graphEnabled ? "on" : "off",
+        values: Object.keys(TOGGLE_LABELS),
       },
       {
         id: Options.UPDATE_INTERVAL,

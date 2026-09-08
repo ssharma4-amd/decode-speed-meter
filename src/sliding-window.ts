@@ -11,7 +11,10 @@ export class SlidingWindow {
   private readonly events: { time: number; tokens: number }[] = [];
   private windowStartIndex = 0;
 
-  constructor(private readonly windowMs: number) {}
+  constructor(private windowMs: number) {}
+
+  /** Updates the TPS window without discarding a live response's events. */
+  setWindow(windowMs: number): void { this.windowMs = windowMs; }
 
   /**
    * Records a batch of tokens with the current timestamp.

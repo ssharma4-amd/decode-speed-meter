@@ -2,165 +2,105 @@ import type {
   AgentEndEvent,
   ExtensionContext,
 } from "@earendil-works/pi-coding-agent";
-import { TOKEN_GENERATION_TOOLS } from "./constants";
 import { TokenSpeedEngine } from "./engine";
+import { GraphController } from "./graph-widget";
 import { Renderer } from "./renderer";
+import { isSubagentChild, SubagentReporter } from "./subagent-reporter";
 import { settings } from "./settings";
-
-interface ToolCall {
-  type: string;
-  name?: string;
-}
 
 interface MessageUpdatePayload {
   assistantMessageEvent: {
     type: string;
     delta?: string;
-    partial?: {
-      content?: ToolCall[];
-      usage?: { output?: number };
-    };
-    contentIndex?: number;
+    partial?: { usage?: { output?: number } };
   };
 }
 
-/**
- * Manages all Pi event subscriptions for the token-speed extension.
- */
+/** Manages decode lifecycle events and the session-scoped graph resource. */
 export class EventManager {
   constructor(
     private readonly engine: TokenSpeedEngine,
     private readonly renderer: Renderer,
+    private readonly graph: GraphController,
+    private readonly reporter: SubagentReporter,
   ) {}
 
-  /**
-   * Initializes the engine and renderer for a new session.
-   *
-   * @param ctx The Pi extension context.
-   */
   async handleSessionStart(ctx: ExtensionContext): Promise<void> {
     await settings.initialize();
     const errors = settings.getErrors();
-
-    if (errors.length > 0) {
-      const message = ["[pi-token-speed]", ...errors].join("\n");
-      ctx.ui.notify(message, "warning");
-    }
-
-    this.engine.initialize();
+    if (errors.length > 0) ctx.ui.notify(["[pi-token-speed]", ...errors].join("\n"), "warning");
+    this.engine.initialize(settings.getConfig());
     this.renderer.initialize(ctx);
     this.renderer.resetThrottle();
+    // Headless child processes own only the reporter sampler/writer, never a TUI widget.
+    if (isSubagentChild()) this.reporter.start();
+    else this.graph.attach(ctx);
   }
 
-  /**
-   * Stops the engine when the session shuts down.
-   */
-  handleSessionShutdown(): void {
+  async handleSessionShutdown(): Promise<void> {
     this.engine.stop();
-  }
-
-  /**
-   * Starts TTFT measurement for user messages and begins streaming for assistant messages.
-   *
-   * @param event The message_start event payload.
-   */
-  handleMessageStart(event: { message?: { role?: string } }): void {
-    if (event.message?.role === "user") {
-      this.engine.startTTFT();
+    if (isSubagentChild()) {
+      await this.reporter.complete();
+      this.reporter.dispose();
+    } else {
+      this.graph.refreshMetrics();
+      this.graph.dispose();
     }
   }
 
-  /**
-   * Routes delta events to the engine and updates the renderer.
-   *
-   * @param event The message_update event payload.
-   * @param ctx The Pi extension context.
-   */
-  handleMessageUpdate(
-    event: MessageUpdatePayload,
-    ctx: ExtensionContext,
-  ): void {
-    const ev = event.assistantMessageEvent;
+  handleMessageStart(event: { message?: { role?: string } }): void {
+    if (event.message?.role === "user") this.engine.startTTFT();
+    if (event.message?.role === "assistant") this.engine.beginAssistantResponse();
+  }
 
-    if (
-      ev.type === "text_start" ||
-      ev.type === "thinking_start" ||
-      ev.type === "toolcall_start"
-    ) {
-      this.engine.stopTTFT();
+  handleMessageUpdate(event: MessageUpdatePayload, ctx: ExtensionContext): void {
+    const ev = event.assistantMessageEvent;
+    if (ev.type === "text_start" || ev.type === "thinking_start" || ev.type === "toolcall_start") {
       this.engine.start();
+      if (isSubagentChild()) this.reporter.notify();
+      else {
+        this.graph.beginRequest();
+        this.graph.startSampling();
+      }
       return;
     }
 
-    if (ev.type === "text_delta" || ev.type === "thinking_delta") {
+    // All model stream payloads are part of one decode series, including JSON
+    // streamed for every tool call. Tool execution is paused only after end.
+    if (ev.type === "text_delta" || ev.type === "thinking_delta" || ev.type === "toolcall_delta") {
+      this.engine.stopTTFT();
       this.engine.recordDelta(ev.delta ?? "", ev.partial?.usage?.output);
       this.renderer.update(ctx);
+      if (isSubagentChild()) this.reporter.notify();
       return;
-    }
-
-    if (ev.type === "toolcall_delta") {
-      const toolCall = ev.partial?.content?.[ev.contentIndex ?? 0];
-      if (toolCall?.type !== "toolCall") return;
-
-      // Only edit/write tools are counted (token generation, relevant)
-      if (this.isTokenGenerationTool(toolCall)) {
-        this.engine.recordDelta(ev.delta ?? "", ev.partial?.usage?.output);
-        this.renderer.update(ctx);
-      }
     }
 
     if (ev.type === "toolcall_end") {
-      const toolCall = ev.partial?.content?.[ev.contentIndex ?? 0];
-      if (toolCall?.type !== "toolCall") return;
-
-      // Pause the timer for prompt processing tools, so they don't skew the average
-      if (this.isPromptProcessingTool(toolCall)) {
-        this.engine.pause();
-      }
+      this.engine.pause();
+      if (isSubagentChild()) void this.reporter.publishState();
+      else this.graph.refreshMetrics();
     }
   }
 
-  /**
-   * Reconciles the total token count, stops streaming, and updates the renderer.
-   *
-   * @param event The message_end event payload.
-   * @param ctx The Pi extension context.
-   */
-  handleAgentEnd(event: AgentEndEvent, ctx: ExtensionContext): void {
+  async handleAgentEnd(event: AgentEndEvent, ctx: ExtensionContext): Promise<void> {
+    // The regular sampler may not get another interval for very short
+    // responses. Capture the terminal decode point while the engine is still
+    // active, so the TUI and web timelines contain a visible final sample.
+    if (isSubagentChild()) this.reporter.captureFinalSample();
+    else this.graph.captureFinalSample();
     this.engine.stop();
-
-    // Only assistant and toolResult messages carry usage data
+    let hasAssistantUsage = false;
     const outputTokens = event.messages.reduce((acc, curr) => {
-      if (curr.role === "assistant") {
-        return acc + curr.usage.output;
-      }
-      if (curr.role === "toolResult") {
-        return acc + (curr.usage?.output ?? 0);
-      }
-      return acc;
+      if (curr.role !== "assistant" || !curr.usage) return acc;
+      hasAssistantUsage = true;
+      return acc + curr.usage.output;
     }, 0);
-
-    this.engine.reconcileTotal(outputTokens);
-    this.renderer.update(ctx);
-  }
-
-  /**
-   * Determines if it's a tool that generates tokens
-   *
-   * @param tool The tool used by Pi
-   * @returns True if it's related to token generation
-   */
-  private isTokenGenerationTool(tool?: ToolCall): boolean {
-    return TOKEN_GENERATION_TOOLS.has(tool?.name ?? "");
-  }
-
-  /**
-   * Determines if it's a tool that processes tokens
-   *
-   * @param tool The tool used by Pi
-   * @returns True if it's related to prompt processing
-   */
-  private isPromptProcessingTool(tool?: ToolCall): boolean {
-    return !this.isTokenGenerationTool(tool);
+    this.engine.reconcileTotal(hasAssistantUsage ? outputTokens : undefined);
+    if (isSubagentChild()) {
+      await this.reporter.complete();
+    } else {
+      this.graph.stopLocalSampling();
+    }
+    this.renderer.forceUpdate(ctx);
   }
 }

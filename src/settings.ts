@@ -13,6 +13,13 @@ import {
   DEFAULT_ICON,
   DISPLAY_MODE,
   END_TPS_BEHAVIOR,
+  GRAPH_ENABLED,
+  GRAPH_HEIGHT,
+  GRAPH_HISTORY_MS,
+  GRAPH_SAMPLE_INTERVAL,
+  INCLUDE_SUBAGENTS,
+  SUBAGENT_RETENTION_MS,
+  SUBAGENT_STALE_MS,
   SLIDING_WINDOW,
   TPS_THRESHOLD_BLAZING,
   TPS_THRESHOLD_FAST,
@@ -31,10 +38,9 @@ import { Validator } from "./validation";
  *
  * Use the exported `settings` singleton — do not instantiate directly.
  *
- * Token counting behavior:
- * - Text/thinking deltas: Counted as 1 token (direct) or estimated from content (estimate)
- * - Toolcall deltas (edit/write): Counted as 1 token (direct) or estimated from content (estimate)
- * - Other toolcalls: Not counted (prompt processing, not relevant)
+ * Decode counting behavior: text, thinking, and every tool-call delta are
+ * merged into one estimated model-decode stream. Tool execution time itself is
+ * excluded by the event lifecycle rather than by filtering tool names.
  */
 export class Settings {
   private cachedConfig: TokenSpeedConfig | null = null;
@@ -69,6 +75,13 @@ export class Settings {
       endTpsBehavior: END_TPS_BEHAVIOR,
       icon: DEFAULT_ICON,
       updateInterval: UPDATE_INTERVAL,
+      graphEnabled: GRAPH_ENABLED,
+      graphHistoryMs: GRAPH_HISTORY_MS,
+      graphSampleInterval: GRAPH_SAMPLE_INTERVAL,
+      graphHeight: GRAPH_HEIGHT,
+      includeSubagents: INCLUDE_SUBAGENTS,
+      subagentStaleMs: SUBAGENT_STALE_MS,
+      subagentRetentionMs: SUBAGENT_RETENTION_MS,
     };
   }
 

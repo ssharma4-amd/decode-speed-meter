@@ -40,11 +40,12 @@ export class Renderer {
     }
   }
 
-  /**
-   * Renders the status bar update without throttling.
-   *
-   * @param ctx The context used by Pi.
-   */
+  /** Forces a terminal status update, used after final usage reconciliation. */
+  forceUpdate(ctx: ExtensionContext): void {
+    this.render(ctx);
+    this.lastUpdateTime = Date.now();
+  }
+
   private render(ctx: ExtensionContext): void {
     const config = settings.getConfig();
     const theme = ctx.ui.theme;
@@ -52,7 +53,9 @@ export class Renderer {
     // Render TPS first
     const { tps } = this.engine;
     const value = tps?.toFixed(1);
-    const measurement = value ? `${value} tok/s` : "--";
+    const measurement = value
+      ? `${this.engine.speedEstimated ? "est. " : ""}${value} tok/s`
+      : "--";
 
     const color = this.getColor(config, tps);
     const displayValue = this.colorHex(measurement, color);
@@ -109,9 +112,14 @@ export class Renderer {
    * @param elapsedSeconds The elapsed time in seconds
    * @returns The formatted stats string.
    */
-  private formatStats(tokenCount: number, elapsedSeconds: number): string {
-    if (elapsedSeconds <= 0) return `${tokenCount} tok`;
-    return `${tokenCount} tok in ${elapsedSeconds.toFixed(1)}s`;
+  private formatStats(
+    tokenCount: number,
+    elapsedSeconds: number,
+    estimated: boolean,
+  ): string {
+    const total = `${estimated ? "~" : ""}${tokenCount} tok`;
+    if (elapsedSeconds <= 0) return total;
+    return `${total} in ${elapsedSeconds.toFixed(1)}s`;
   }
 
   /**
@@ -121,7 +129,7 @@ export class Renderer {
    * @returns The suffix to append
    */
   private buildSuffix(display: DisplayMode): string {
-    const { ttft, tokenCount: tokens, elapsedSeconds: elapsed } = this.engine;
+    const { ttft, tokenCount: tokens, elapsedSeconds: elapsed, totalEstimated } = this.engine;
 
     switch (display) {
       case "tps":
@@ -129,9 +137,9 @@ export class Renderer {
       case "ttft":
         return ` (TTFT: ${ttft} ms)\u200b`;
       case "stats":
-        return ` (${this.formatStats(tokens, elapsed)})\u200b`;
+        return ` (${this.formatStats(tokens, elapsed, totalEstimated)})\u200b`;
       case "full":
-        return ` (${this.formatStats(tokens, elapsed)} · TTFT: ${ttft} ms)\u200b`;
+        return ` (${this.formatStats(tokens, elapsed, totalEstimated)} · TTFT: ${ttft} ms)\u200b`;
     }
   }
 

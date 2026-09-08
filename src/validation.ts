@@ -14,6 +14,13 @@ import {
   DEFAULT_ICON,
   DISPLAY_MODE,
   END_TPS_BEHAVIOR,
+  GRAPH_ENABLED,
+  GRAPH_HEIGHT,
+  GRAPH_HISTORY_MS,
+  GRAPH_SAMPLE_INTERVAL,
+  INCLUDE_SUBAGENTS,
+  SUBAGENT_RETENTION_MS,
+  SUBAGENT_STALE_MS,
   SLIDING_WINDOW,
   TPS_THRESHOLD_BLAZING,
   TPS_THRESHOLD_FAST,
@@ -68,6 +75,40 @@ export class Validator {
       config.updateInterval,
       errors,
     );
+    response.graphEnabled = this.checkGraphEnabled(config.graphEnabled, errors);
+    response.graphHistoryMs = this.checkGraphNumber(
+      config.graphHistoryMs,
+      1000,
+      120000,
+      GRAPH_HISTORY_MS,
+      "graphHistoryMs",
+      errors,
+    );
+    response.graphSampleInterval = this.checkGraphNumber(
+      config.graphSampleInterval,
+      100,
+      1000,
+      GRAPH_SAMPLE_INTERVAL,
+      "graphSampleInterval",
+      errors,
+    );
+    response.graphHeight = this.checkGraphNumber(
+      config.graphHeight,
+      3,
+      12,
+      GRAPH_HEIGHT,
+      "graphHeight",
+      errors,
+    );
+    response.includeSubagents = this.checkBoolean(config.includeSubagents, INCLUDE_SUBAGENTS, "includeSubagents", errors);
+    response.subagentStaleMs = this.checkGraphNumber(config.subagentStaleMs, 500, 60000, SUBAGENT_STALE_MS, "subagentStaleMs", errors);
+    const minimumStaleMs = response.graphSampleInterval * 2;
+    if (response.subagentStaleMs < minimumStaleMs) {
+      const corrected = Math.max(minimumStaleMs, SUBAGENT_STALE_MS);
+      errors.push(`- Invalid subagentStaleMs "${response.subagentStaleMs}" — using ${corrected} so child reports cannot outlive freshness.`);
+      response.subagentStaleMs = corrected;
+    }
+    response.subagentRetentionMs = this.checkGraphNumber(config.subagentRetentionMs, response.subagentStaleMs, 24 * 60 * 60 * 1000, SUBAGENT_RETENTION_MS, "subagentRetentionMs", errors);
 
     // Error-only checks (no correction)
     const thresholdResult = this.isValidThresholdOrder(config);
@@ -289,12 +330,35 @@ export class Validator {
    * @returns The validated (or defaulted) updateInterval value.
    */
   private static checkUpdateInterval(value: unknown, errors: string[]): number {
-    if (typeof value === "number" && value >= 0) return value;
+    if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
 
     errors.push(
       `- Invalid updateInterval "${value}" — defaulting to ${UPDATE_INTERVAL}.`,
     );
 
     return UPDATE_INTERVAL;
+  }
+
+  private static checkGraphEnabled(value: unknown, errors: string[]): boolean {
+    return this.checkBoolean(value, GRAPH_ENABLED, "graphEnabled", errors);
+  }
+
+  private static checkBoolean(value: unknown, fallback: boolean, name: string, errors: string[]): boolean {
+    if (typeof value === "boolean") return value;
+    errors.push(`- Invalid ${name} (expected boolean) — defaulting to ${fallback}.`);
+    return fallback;
+  }
+
+  private static checkGraphNumber(
+    value: unknown,
+    minimum: number,
+    maximum: number,
+    fallback: number,
+    name: string,
+    errors: string[],
+  ): number {
+    if (typeof value === "number" && Number.isFinite(value) && value >= minimum && value <= maximum) return value;
+    errors.push(`- Invalid ${name} "${value}" — defaulting to ${fallback}.`);
+    return fallback;
   }
 }

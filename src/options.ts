@@ -19,7 +19,7 @@ export const DISPLAY_LABELS: Record<DisplayMode, string> = {
  */
 export const COUNT_STRATEGY_LABELS: Record<CountStrategy, string> = {
   estimate: "Estimate (fast)",
-  direct: "Direct (accurate)",
+  direct: "One per delta (estimate)",
 };
 
 /**

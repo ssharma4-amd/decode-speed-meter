@@ -4,11 +4,6 @@
 export const STATUS_KEY = "tokenSpeed";
 
 /**
- * Known Pi tools that generate tokens
- */
-export const TOKEN_GENERATION_TOOLS = new Set(["edit", "write"]);
-
-/**
  * Maximum number of dead timestamp entries before compacting the array.
  */
 export const COMPACTION_THRESHOLD = 5000;

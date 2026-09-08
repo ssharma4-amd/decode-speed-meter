@@ -8,13 +8,23 @@ import type {
 import { CommandManager } from "./src/commands";
 import { TokenSpeedEngine } from "./src/engine";
 import { EventManager } from "./src/events";
+import { GraphController } from "./src/graph-widget";
 import { Renderer } from "./src/renderer";
+import { isSubagentChild, SubagentReporter } from "./src/subagent-reporter";
+import { settings } from "./src/settings";
 
 export default async (pi: ExtensionAPI) => {
   const engine = new TokenSpeedEngine();
   const renderer = new Renderer(engine);
-  const commands = new CommandManager(renderer, engine);
-  const eventManager = new EventManager(engine, renderer);
+  const graph = new GraphController(engine);
+  const reporter = new SubagentReporter(engine, () => settings.getConfig().graphSampleInterval);
+  const commands = new CommandManager(renderer, engine, graph);
+  const eventManager = new EventManager(engine, renderer, graph, reporter);
+
+  // pi-subagents uses this acknowledgement to confirm this extension loaded in children.
+  if (isSubagentChild()) {
+    pi.events.emit("subagent:acknowledge-extension", { id: "pi-token-speed" });
+  }
 
   // Command registration
   pi.registerCommand("tps", {
@@ -28,8 +38,8 @@ export default async (pi: ExtensionAPI) => {
     await eventManager.handleSessionStart(ctx);
   });
 
-  pi.on("session_shutdown", () => {
-    eventManager.handleSessionShutdown();
+  pi.on("session_shutdown", async () => {
+    await eventManager.handleSessionShutdown();
   });
 
   // Streaming lifecycle
@@ -41,7 +51,7 @@ export default async (pi: ExtensionAPI) => {
     eventManager.handleMessageUpdate(event, ctx);
   });
 
-  pi.on("agent_end", (event: AgentEndEvent, ctx: ExtensionContext) => {
-    eventManager.handleAgentEnd(event, ctx);
+  pi.on("agent_end", async (event: AgentEndEvent, ctx: ExtensionContext) => {
+    await eventManager.handleAgentEnd(event, ctx);
   });
 };

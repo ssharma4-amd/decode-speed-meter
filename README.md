@@ -1,239 +1,129 @@
-# pi-token-speed
+# pi-token-speed graph fork
 
-A [Pi Coding Agent](https://pi.dev/) extension that displays real-time **tokens-per-second (TPS)** performance metrics in the status bar while the AI is streaming responses.
+A [Pi Coding Agent](https://pi.dev/) extension that keeps the original footer TPS status and adds a persistent terminal-native decode-speed chart below the editor.
 
-## Features
+## Decode graph
 
-- **Real-time TPS tracking** — measures token throughput as the assistant generates text and thinking content
-- **Time-to-first-token (TTFT)** — measures latency from user message to the first token being generated
-- **Configurable sliding window** — adjust the window size to suit your server speed (default: 1s)
-- **Color-coded speed indicators** — visual feedback based on performance thresholds
-- **Configurable update interval** — throttle status bar updates to reduce visual flickering
-- **Provider-reported counting** — opt in to using provider-reported counts (e.g. Anthropic, OpenAI) instead of the extension's own counter
-- **Fully configurable** — customize display, thresholds and colors via `~/.pi/agent/settings.json`
+The graph measures one **estimated model decode** stream. Text, reasoning, and every streamed tool-call JSON payload are merged into that stream. It intentionally does not split reasoning, answer text, or tool arguments: they are all model output.
 
-## Speed Tiers
+- A 2×4-dot-per-cell Unicode **Braille** chart plots a responsive one-second EMA of sampled decode TPS as the accent line and the request mean as a dim secondary line. Raw interval samples are retained for diagnostics.
+- It defaults to a bounded whole-request overview with a point budget derived from `graphHistoryMs` (30 seconds / 250ms = roughly 121 points) and a six-cell-row chart. It is **not** a trailing 30-second window: endpoints and adaptive samples are retained without unbounded arrays.
+- The primary chart and **Interactive** Now/Mean/Peak show one active parent/child decoder—the relevant user-facing interactivity. Now and Peak use the responsive smoothed series; Mean is the request-wide decode average. A separately labeled **Aggregate capacity** Now/Mean/Peak shows the sum of concurrent decoders. Both means are time-weighted over intervals with at least one active decoder.
+- Metrics show total output tokens, first response, request wall-clock duration, summed active decoder duration (worker-seconds), and state. At wide widths compact Parent/opaque-Child summaries include per-decoder mean and peak.
+- Local engine sampling is TUI-only and starts only during an active model stream. After parent `agent_end`, local samples freeze while the parent TUI continues polling enabled child sidecars, so late child completion is still reflected without changing the parent series.
+- Tool execution is excluded from decode duration/TPS: after every `toolcall_end`, sampling and elapsed time pause until the next generated delta. Resuming rebases the sampler so tool time does not create a fake low-speed point.
 
-| Tier       | TPS   | Color              |
-| ---------- | ----- | ------------------ |
-| 🟥 Slow    | 0–15  | `#ff4444` (red)    |
-| 🟨 Medium  | 15–30 | `#ffaa00` (orange) |
-| 🟩 Fast    | 30–45 | `#00ff88` (green)  |
-| 🟦 Blazing | 45+   | `#44ddff` (cyan)   |
+### Provenance
 
-## Installation
+Graph speed, peak, and mean are always marked **estimated**: Pi transport deltas are chunks, not tokens, and do not carry provider timestamps. The `direct` counting strategy means one estimated token per delta; `estimate` uses a word/punctuation approximation.
 
-This package is a Pi extension. Install it with
+When enabled, progressive provider `usage.output` may improve the live footer **total** per assistant response. Providers often initialize partial `usage.output` to `0`; that placeholder deliberately does **not** suppress the live estimate. A positive progressive value replaces that response's estimate. At agent end, assistant usage (including a final zero) is authoritative. Final reconciliation removes `~` from Total only; it never changes decode history, peak, mean, or the estimated graph label.
+
+## Local installation (without global changes)
+
+From this repository:
 
 ```bash
-npm install pi-token-speed
+npm install
+pi -e ./index.ts
 ```
 
-or
+For project-local auto-discovery and `/reload`, copy or symlink this repository to `.pi/extensions/pi-token-speed-graph/` in the target project. Do not copy it to `~/.pi` unless a global extension is explicitly desired. Installing, testing, and checking this repository does not alter global Pi settings or the globally installed Pi package.
+
+## AMD Megakernels demo
+
+The standalone browser demo launches a local `pi --mode rpc` child process and renders the session through the AMD Megakernels-branded dashboard:
 
 ```bash
-pi install https://github.com/gsanhueza/pi-token-speed
+npm run demo
 ```
+
+Open the complete tokenized URL printed by the server. The demo defaults to port `8790`; use `PI_SPEED_DEMO_PORT=8800 npm run demo` to change it. `PI_BIN` can select a different Pi executable, `PI_SPEED_DEMO_CWD` changes the child working directory, and `PI_SPEED_DEMO_PERSIST=1` enables Pi session persistence. The demo currently uses Pi's configured provider/model adapter; it does not call an AMD endpoint directly.
 
 ## Configuration
 
-You can customize the display, speed thresholds and colors by adding a `tokenSpeed` section to your `~/.pi/agent/settings.json`:
+Add a `tokenSpeed` section to Pi settings when desired:
 
 ```json
 {
   "tokenSpeed": {
-    "tpsSlow": 0,
-    "tpsMedium": 15,
-    "tpsFast": 30,
-    "tpsBlazing": 45,
-    "colorSlow": "#ff4444",
-    "colorMedium": "#ffaa00",
-    "colorFast": "#00ff88",
-    "colorBlazing": "#44ddff",
     "slidingWindow": 1000,
     "display": "tps",
     "useProviderTokens": false,
     "countStrategy": "direct",
     "endTpsBehavior": "average",
     "icon": "⚡",
-    "updateInterval": 0
+    "updateInterval": 0,
+    "graphEnabled": true,
+    "graphHistoryMs": 30000,
+    "graphSampleInterval": 250,
+    "graphHeight": 6,
+    "includeSubagents": true,
+    "subagentStaleMs": 3000,
+    "subagentRetentionMs": 600000
   }
 }
 ```
 
-### Configuration Validation
+| Option | Default | Description |
+| --- | --- | --- |
+| `slidingWindow` | `1000` | Footer TPS window in ms (`100`–`30000`) |
+| `display` | `tps` | Footer display: `tps`, `ttft`, `stats`, or `full` |
+| `useProviderTokens` | `false` | Use progressive per-response provider usage for the live footer total when present |
+| `countStrategy` | `direct` | `direct` = one estimated token per delta; `estimate` = content approximation |
+| `endTpsBehavior` | `average` | Footer post-stream TPS: `average` or `last` |
+| `icon` | `⚡` | Footer icon; empty string hides it |
+| `updateInterval` | `0` | Footer update throttle in ms; `0` means every delta |
+| `graphEnabled` | `true` | Show the below-editor graph; `/tps` toggles it without resetting a run |
+| `graphHistoryMs` | `30000` | Whole-request chart point-budget hint (`ceil(graphHistoryMs / graphSampleInterval) + 1`, bounded to 16–480); retained for config compatibility, no longer a trailing-time window |
+| `graphSampleInterval` | `250` | Graph sample interval in ms (`100`–`1000`) |
+| `graphHeight` | `6` | Braille chart cell rows (`3`–`12`); narrow terminals reduce it as needed |
+| `includeSubagents` | `true` | In a parent TUI session, read only this session's child decode sidecars |
+| `subagentStaleMs` | `3000` | Freshness limit for active child snapshots (`500`–`60000` ms and at least twice `graphSampleInterval`) |
+| `subagentRetentionMs` | `600000` | Keep completed child totals in this parent session (`subagentStaleMs`–`86400000` ms) |
 
-Invalid configuration values are automatically corrected to their defaults. A warning notification is displayed in the Pi status bar at session start listing any corrections made. The `slidingWindow` value is also clamped between `100ms` and `30000ms` (30s).
+All invalid settings are corrected to defaults with a session-start warning. The `/tps` menu retains footer, provider-total, count strategy, icon, update interval, and graph on/off settings.
 
-### Configuration Options
+## Subagent decode metrics
 
-| Option              | Type                           | Default     | Description                                                      |
-| ------------------- | ------------------------------ | ----------- | ---------------------------------------------------------------- |
-| `tpsSlow`           | number                         | `0`         | Minimum TPS threshold ("slow")                                   |
-| `tpsMedium`         | number                         | `15`        | TPS above this is "medium"                                       |
-| `tpsFast`           | number                         | `30`        | TPS above this is "fast"                                         |
-| `tpsBlazing`        | number                         | `45`        | TPS above this is "blazing"                                      |
-| `colorSlow`         | string                         | `"#ff4444"` | Color for slow tier                                              |
-| `colorMedium`       | string                         | `"#ffaa00"` | Color for medium tier                                            |
-| `colorFast`         | string                         | `"#00ff88"` | Color for fast tier                                              |
-| `colorBlazing`      | string                         | `"#44ddff"` | Color for blazing tier                                           |
-| `slidingWindow`     | number                         | `1000`      | Sliding window duration in ms                                    |
-| `display`           | `tps`, `ttft`, `stats`, `full` | `tps`       | Display mode (see below)                                         |
-| `useProviderTokens` | boolean                        | `false`     | Opt-in: use provider-reported count instead of the extension one |
-| `countStrategy`     | `estimate`, `direct`           | `direct`    | Token counting strategy used by the extension's own counter      |
-| `endTpsBehavior`    | `average`, `last`              | `average`   | What to show after streaming ends                                |
-| `icon`              | string                         | `"⚡"`      | Icon shown before TPS in the status bar                          |
-| `updateInterval`    | number                         | `0`         | Status bar update interval in ms (0 = every delta)               |
+`pi-subagents` child processes do not share `message_update` events with their parent. When this extension is included in the child process, it writes a content-free numeric/state snapshot under the OS temporary directory (`pi-token-speed-subagents/<hashed-parent-session>/`, root and session directories mode `0700` and files `0600` where supported). The parent TUI polls only the hash of its own session ID. Snapshots contain numeric counters/timestamps, state, numeric child index, parent hash, and an opaque fixed `childId` (SHA-256 of the required run ID plus index)—never the run ID itself, agent name, model ID, prompts, deltas, generated text, tool arguments, CWD, secrets, or session paths. Rows render as `Child <index>`. A child with no run ID or valid nonnegative index disables reporting rather than writing a fallback identity.
 
-### Interactive Menu
+Writes use random exclusive temporary files followed by atomic rename. As with any same-user temp-directory sidecar, a hostile same-user process can race directory entries or symlinks; permissions and validation reduce accidental exposure but do not attempt to solve that OS-level trust boundary.
 
-A small interactive menu is available when running `/tps` in the editor, where you can adjust:
+The fleet chart is request-scoped: a new parent decode start resets its timeline and fleet statistics, while the earlier user-message timestamp starts end-to-end wall time (including TTFT/prefill). Retained sidecars are accepted only when their request start is at or after that parent user request. The primary chart samples **interactive TPS** (maximum active parent/child decoder rate), while the separately labeled **Aggregate capacity** values sample the concurrent sum. Their means are independently time-weighted over active intervals, so idle/tool-paused gaps do not lower either one. Completed children remain in totals for `subagentRetentionMs`, but are not active or included in current TPS. The request is complete only once the parent and all currently known children are complete/inactive; polling continues after parent `agent_end`, and a late child reopens the overview. **First response** remains the root request's TTFT (a later child-local TTFT cannot make it look shorter). **Wall duration** starts at the root user message and freezes at fleet completion; **Decode duration** is summed active decoder time (worker-seconds). Wide per-decoder rows use only `Parent` and `Child <numeric-index>-<opaque-hash-prefix>` labels, never run IDs or content.
 
-- **Display mode** — what to show in the status bar
-- **Use provider tokens** — use provider-reported counts instead of the extension's counter
-- **Count strategy** — how the extension counts tokens (`estimate` or `direct`)
-- **End-of-stream TPS** — what to show after streaming ends (`average` or `last`)
-- **Status icon** — choose the icon shown before TPS (`⚡`, `🔥`, `💨`, `🚀`, or none)
-- **Status update interval** — throttle status bar updates (see below)
-
-### Sliding Window
-
-The sliding window determines how many recent tokens are used to calculate TPS. A larger window produces smoother readings at the cost of responsiveness; a smaller window reacts faster but can be noisier. To avoid burst spikes, the time span used in the calculation is clamped to a minimum threshold of 100ms.
-
-#### Burst & Stall Handling
-
-When a provider buffers output and flushes it all at once, all tokens arrive with the same timestamp. In this case, the TPS calculation extends the time span backward to include the gap since the last token, giving a more representative reading:
-
-```
-20 tokens → 5s stall → 500 tokens flushed
-```
-
-Without this handling, TPS would show `5000 tok/s` (500 tokens / 100ms clamp). With it, the reading reflects the actual throughput including the stall period (~100 tok/s).
-
-A legitimate burst spread over time (different timestamps) is not affected — the span uses the actual time between the first and last token in the window.
-
-| Server speed        | Recommended window | Why                                                       |
-| ------------------- | ------------------ | --------------------------------------------------------- |
-| Fast (30+ tok/s)    | `1000` (default)   | Plenty of tokens in the window — accurate and responsive  |
-| Medium (5–30 tok/s) | `1000`–`3000`      | Enough tokens for stable readings                         |
-| Slow (< 5 tok/s)    | `5000`–`15000`     | Captures more tokens, avoiding spiky or unreliable values |
-
-For example, if your server streams at ~1 tok/s, a 10-second window gives ~10 tokens per window — enough for a reasonable calculation:
+To have `pi-subagents` load this repository in headless children, add this to the existing `subagents.defaultExtensions` setting (adjust the absolute path for your checkout; this extension does not write settings itself):
 
 ```json
 {
-  "tokenSpeed": {
-    "slidingWindow": 10000
+  "subagents": {
+    "defaultExtensions": [
+      "/Users/aditya_nandakumar/workspace/inference_engines/pi_speed_tracker/index.ts"
+    ]
   }
 }
 ```
 
-### Provider Token Counts
+Agents configured with an explicit `extensions` list may override defaults; include this `index.ts` in those agents explicitly. Child mode acknowledges `subagent:acknowledge-extension` with id `pi-token-speed`, creates no widget, and uses one unref'd reporter timer. The parent creates its filesystem poller only in TUI mode.
 
-By default, this extension uses its own token counter — the same engine behind `countStrategy`. As an alternative, you can opt in to using the provider's own reported counts instead:
+## Lifecycle and tool behavior
 
-| Value             | Behavior                                                                                    |
-| ----------------- | ------------------------------------------------------------------------------------------- |
-| `false` (default) | Use this extension's own counter (controlled by `countStrategy`)                            |
-| `true`            | Use the provider's reported counts instead; fall back to `countStrategy` when not available |
+1. A user message starts first-response timing.
+2. The first text, thinking, or tool-call delta records first response. A content-block start activates stream state but does not stop first-response timing.
+3. Text, thinking, and all tool-call deltas increment the same estimated decode stream.
+4. Every completed tool call pauses active decode timing and graph sampling. The next delta resumes with a rebased sample baseline.
+5. On agent end, local sampling stops, final usage reconciles Total only, the graph is repainted without adding a parent sample, and the footer is force-updated despite its throttle. A parent TUI with `includeSubagents` remains on its sidecar poll cadence.
+6. On shutdown/reload/graph disable the widget and unref'd timer are disposed. Generic JSON, RPC, and print modes remain inert.
 
-The extension's own counter is the default and always available. Enable `useProviderTokens: true` when your provider reports accurate token counts and you'd prefer to use them instead.
+## Development
 
-### Count Strategy
-
-When `useProviderTokens` is `false` (default) or when the provider doesn't report counts, the `countStrategy` determines how the extension's own counter works:
-
-| Strategy           | Behavior                            |
-| ------------------ | ----------------------------------- |
-| `direct` (default) | Counts each delta as 1 token        |
-| `estimate`         | Approximates tokens from delta text |
-
-The `direct` strategy is fast and preserves the original behavior — it counts each streaming delta as 1 token, including toolcalls for `edit` and `write` operations. Use `estimate` when your server streams in small chunks — it approximates the real token count from the delta text, giving a more meaningful TPS reading.
-
-> **Note:** Only `edit` and `write` tool call deltas are counted. Other tool calls (prompt processing) are excluded from token counting.
-
-### Timer Pausing
-
-The extension automatically pauses the TPS timer when a prompt processing tool call ends (any tool other than `edit` or `write`). This prevents tool processing time from skewing the TPS calculation. The timer resumes when the next token delta arrives.
-
-### End-of-Stream TPS Behavior
-
-After streaming ends, the `endTpsBehavior` option controls what TPS value is displayed:
-
-| Behavior            | Behavior                                                                                                                                          |
-| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `average` (default) | Returns the overall average TPS (`total tokens / total elapsed seconds`). Consistent with the stats display.                                      |
-| `last`              | Returns the last sliding window TPS measurement from the moment streaming stopped. Useful for seeing how fast the model was streaming at the end. |
-
-This is also configurable via the `/tps` interactive menu.
-
-### Status Update Interval
-
-By default, the status bar updates on every token delta. If you're experiencing visual flickering, you can configure the update interval in milliseconds via the `/tps` interactive menu (`0`, `50`, `100`, `200`, `500`).
-
-You can also set a custom value in `~/.pi/agent/settings.json`:
-
-```json
-{
-  "tokenSpeed": {
-    "updateInterval": 80
-  }
-}
+```bash
+npm test
+npm run check
+npm run check:demo
+git diff --check
+npm audit --omit=dev
+npm pack --dry-run
 ```
 
-The TPS calculation continues normally regardless of the update interval — only the status bar rendering is throttled.
-
-## Display Modes
-
-| Mode    | Description                                                                 |
-| ------- | --------------------------------------------------------------------------- |
-| `tps`   | `⚡ TPS: 25.0 tok/s` — TPS with color-coded speed tier                      |
-| `ttft`  | `⚡ TPS: 25.0 tok/s (TTFT: 450 ms)` — TPS + time-to-first-token             |
-| `stats` | `⚡ TPS: 25.0 tok/s (150 tok in 6.0s)` — TPS + token count and elapsed time |
-| `full`  | `⚡ TPS: 25.0 tok/s (150 tok in 6.0s · TTFT: 450 ms)` — everything          |
-
-> **Note:** Set `icon: ""` to hide the icon prefix, rendering just `TPS: 25.0 tok/s`.
-
-### Example: Minimal status bar
-
-With `icon: ""` and `display: "tps"`, the status bar shows:
-
-```
-TPS: 25.0 tok/s
-```
-
-### Custom icons
-
-The `/tps` command offers `⚡`, `🔥`, `💨`, `🚀` and none. You can also set any custom icon directly in your `settings.json`:
-
-```json
-{
-  "tokenSpeed": {
-    "icon": "🎯"
-  }
-}
-```
-
-## Commands
-
-| Command | Description                                                                               |
-| ------- | ----------------------------------------------------------------------------------------- |
-| `/tps`  | Open settings menu — configure options described in [Interactive Menu](#interactive-menu) |
-
-## How It Works
-
-1. **Session Start** — Renders the initial status bar entry showing the configured icon followed by `TPS: --`
-2. **Message Start** — When a user message starts, TTFT measurement begins
-3. **First Token & Streaming Start** — The moment the first content block starts (`text_start`, `thinking_start`, or `toolcall_start`), the TTFT is recorded and the streaming engine starts tracking
-4. **Token Update** — Each text/thinking delta is recorded. If `useProviderTokens` is `true` and the provider reports token counts, those are used directly; otherwise the extension's own counter (controlled by `countStrategy`) is used
-5. **Sliding Window** — TPS is calculated using a configurable time window of token timestamps. If all events in the window share the same timestamp (a flush after a stall), the span extends backward to include the gap. When streaming ends, behavior depends on `endTpsBehavior`:
-   - `average` (default): returns the overall average TPS for consistency with stats.
-   - `last`: returns the last sliding window measurement.
-6. **Agent End** — The authoritative token count (if available) is used to snap the total, ensuring the final average is exact. Streaming is stopped.
-
-## Dependencies
-
-| Peer dependency                   | Purpose             |
-| --------------------------------- | ------------------- |
-| `@earendil-works/pi-coding-agent` | Pi Coding Agent SDK |
-| `@earendil-works/pi-tui`          | Pi TUI SDK          |
+No commit, publish, or global package installation is required.

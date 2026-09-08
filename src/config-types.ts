@@ -33,4 +33,14 @@ export interface TokenSpeedConfig {
   endTpsBehavior: EndTpsBehavior;
   icon: string;
   updateInterval: number; // ms, 0 = update on every delta
+  graphEnabled: boolean;
+  graphHistoryMs: number;
+  graphSampleInterval: number;
+  graphHeight: number;
+  /** Include same-orchestrator child decode sidecars in the TUI graph. */
+  includeSubagents: boolean;
+  /** Freshness bound for active child sidecars. */
+  subagentStaleMs: number;
+  /** How long completed child totals remain visible for this parent session. */
+  subagentRetentionMs: number;
 }

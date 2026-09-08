@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AMD Megakernels · UltraFast Inference</title>
+  <link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+  <main class="app-shell">
+    <header class="telemetry" aria-label="Live generation telemetry">
+      <div class="legend-row">
+        <div class="phase-legend" aria-live="polite">
+          <span id="thinking-indicator" class="phase"><i></i>Thinking</span>
+          <span id="output-indicator" class="phase"><i></i>Output</span>
+        </div>
+        <div id="connection" class="connection">Connecting…</div>
+      </div>
+
+      <div class="speed-grid">
+        <section class="chart-card">
+          <div class="chart-heading">
+            <div>
+              <span id="current-label" class="eyebrow">Interactive decode</span>
+              <strong id="current-speed">0.0 tok/s</strong>
+              <small class="chart-average">Average <strong id="mean-speed">0.0</strong> est. tok/s</small>
+            </div>
+            <div class="peak-pill">Peak <strong id="peak-speed">0.0</strong> est. tok/s</div>
+          </div>
+          <svg id="speed-chart" viewBox="0 0 760 126" role="img" aria-label="Live token generation speed">
+            <defs>
+              <linearGradient id="flame-stroke" x1="0" x2="1">
+                <stop offset="0" stop-color="#ff8a70"></stop>
+                <stop offset="0.48" stop-color="#ff5148"></stop>
+                <stop offset="1" stop-color="#c51f2a"></stop>
+              </linearGradient>
+              <linearGradient id="flame-fill" x1="0" x2="0" y1="0" y2="1">
+                <stop offset="0" stop-color="#ef4444" stop-opacity="0.34"></stop>
+                <stop offset="1" stop-color="#991b1b" stop-opacity="0"></stop>
+              </linearGradient>
+              <filter id="flame-glow" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="2.8" result="blur"></feGaussianBlur>
+                <feMerge><feMergeNode in="blur"></feMergeNode><feMergeNode in="SourceGraphic"></feMergeNode></feMerge>
+              </filter>
+            </defs>
+            <g id="chart-grid"></g>
+            <path id="speed-area" class="speed-area"></path>
+            <path id="mean-line" class="line mean-line"></path>
+            <path id="speed-line" class="line speed-line"></path>
+            <circle id="speed-point" class="speed-point" r="3.5" hidden></circle>
+            <g id="flame-marker" class="flame-marker" hidden><text x="0" y="0">🔥</text></g>
+          </svg>
+          <div class="chart-scale"><span id="chart-max">0</span><span>est. tok/s</span><span>now</span></div>
+        </section>
+
+        <section class="metric-card"><span>Total tokens</span><strong id="total-tokens">0</strong><small id="total-kind">estimated output</small></section>
+        <section class="metric-card"><span>First response</span><strong id="first-response">—</strong><small id="request-state">idle</small></section>
+        <section class="metric-card"><span>Duration</span><strong id="duration">—</strong><small>wall clock</small></section>
+      </div>
+    </header>
+
+    <section class="session-bar" aria-label="Agent session controls">
+      <div>
+        <strong>AMD Megakernels</strong>
+        <span id="model-name">Loading session…</span>
+      </div>
+      <button id="new-session" class="secondary" type="button">New session</button>
+    </section>
+
+    <section id="messages" class="messages" aria-live="polite" aria-label="Conversation">
+      <div id="welcome" class="welcome">
+        <span class="welcome-icon">⚡</span>
+        <h1>AMD Megakernels</h1>
+        <p>UltraFast inference at full throttle — with live decode-speed telemetry.</p>
+      </div>
+    </section>
+
+    <div id="notice" class="notice" role="status" hidden></div>
+
+    <form id="composer" class="composer">
+      <label for="prompt" class="sr-only">Message the model</label>
+      <textarea id="prompt" rows="3" maxlength="262144" placeholder="Ask anything…"></textarea>
+      <div class="composer-actions">
+        <span>Enter to send · Shift+Enter for newline</span>
+        <button id="abort" class="secondary danger" type="button" disabled>Stop</button>
+        <button id="send" type="submit" disabled>Send</button>
+      </div>
+    </form>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
