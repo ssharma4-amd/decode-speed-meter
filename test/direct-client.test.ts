@@ -39,7 +39,7 @@ test("direct client streams OpenAI-compatible SSE and preserves provider usage",
     assert.equal(request.stream, true);
     assert.equal(request.messages[0].content, "Say hello");
     assert.equal(events.find((event) => event.type === "agent_start")?.type, "agent_start");
-    assert.deepEqual(events.filter((event) => event.type === "message_update").map((event) => (event.assistantMessageEvent as Record<string, unknown>).type), ["text_start", "text_delta", "text_delta"]);
+    assert.deepEqual(events.filter((event) => event.type === "message_update").map((event) => (event.assistantMessageEvent as Record<string, unknown>).type), ["thinking_start", "text_start", "text_delta", "text_delta"]);
     const end = events.find((event) => event.type === "agent_end");
     assert.deepEqual(end?.messages, [{ role: "assistant", usage: { output: 2 } }]);
     assert.deepEqual(client.messages().at(-1)?.content, [{ type: "text", text: "DIRECT_OK" }]);

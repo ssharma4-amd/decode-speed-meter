@@ -1,5 +1,3 @@
-import type { DemoPhase } from "./telemetry";
-
 type Emit = (event: Record<string, unknown>) => void;
 type ChatMessage = { role: "user" | "assistant"; content: string };
 type DirectClientOptions = {
@@ -65,6 +63,9 @@ export class DirectInferenceClient {
     this.options.emit({ type: "agent_start" });
     this.options.emit({ type: "message_start", message: { role: "user", content: userMessage } });
     this.options.emit({ type: "message_start", message: { role: "assistant", content: [] } });
+    // Make the request visibly active while the gateway is performing prefill
+    // or reasoning. Without this, a slow first token looks like a dead UI.
+    this.options.emit({ type: "message_update", assistantMessageEvent: { type: "thinking_start" } });
 
     const controller = new AbortController();
     this.controller = controller;
@@ -105,7 +106,7 @@ export class DirectInferenceClient {
       }
       if (!response.body) throw new Error("Gateway returned no streaming response body");
 
-      let started = false;
+      let phase: "thinking" | "output" = "thinking";
       for await (const payload of readSse(response.body)) {
         if (payload === "[DONE]") break;
         let chunk: Record<string, unknown>;
@@ -120,18 +121,14 @@ export class DirectInferenceClient {
 
         const reasoning = firstText(delta, ["reasoning_content", "reasoning", "reasoning_text"]);
         if (reasoning) {
-          if (!started) {
-            this.options.emit({ type: "message_update", assistantMessageEvent: { type: "thinking_start" } });
-            started = true;
-          }
           this.options.emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: reasoning }, usage: usageEvent(usageOutput) });
         }
 
         const content = textContent(delta.content);
         if (content) {
-          if (!started || phaseWasThinking(delta, reasoning)) {
+          if (phase !== "output") {
             this.options.emit({ type: "message_update", assistantMessageEvent: { type: "text_start" } });
-            started = true;
+            phase = "output";
           }
           assistant += content;
           this.options.emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: content }, usage: usageEvent(usageOutput) });
@@ -218,12 +215,3 @@ function readUsage(chunk: Record<string, unknown>): number | undefined {
 function usageEvent(output: number | undefined): Record<string, unknown> | undefined {
   return output === undefined ? undefined : { output };
 }
-
-// A reasoning field and content may coexist in a single chunk. Content should
-// transition the dashboard into output after reasoning has started.
-function phaseWasThinking(delta: Record<string, unknown>, reasoning: string): boolean {
-  return Boolean(reasoning && delta.content);
-}
-
-// Keep this import-free marker useful to callers documenting emitted phases.
-export type DirectPhase = DemoPhase;
