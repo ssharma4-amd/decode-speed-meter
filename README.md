@@ -32,13 +32,27 @@ For project-local auto-discovery and `/reload`, copy or symlink this repository 
 
 ## AMD Megakernels demo
 
-The standalone browser demo launches a local `pi --mode rpc` child process and renders the session through the AMD Megakernels-branded dashboard:
+The standalone browser demo renders the AMD Megakernels-branded dashboard. When `LLM_GATEWAY_KEY` is available, it defaults to a direct OpenAI-compatible gateway connection:
 
 ```bash
 npm run demo
 ```
 
-Open the complete tokenized URL printed by the server. The demo defaults to port `8790`; use `PI_SPEED_DEMO_PORT=8800 npm run demo` to change it. `PI_BIN` can select a different Pi executable, `PI_SPEED_DEMO_CWD` changes the child working directory, and `PI_SPEED_DEMO_PERSIST=1` enables Pi session persistence. The demo currently uses Pi's configured provider/model adapter; it does not call an AMD endpoint directly.
+Open the complete tokenized URL printed by the server. The demo defaults to port `8790`; use `PI_SPEED_DEMO_PORT=8800 npm run demo` to change it.
+
+For the AMD gateway configured in `~/.codex/config.toml`:
+
+```bash
+PI_SPEED_DEMO_MODE=direct \
+PI_OPENAI_BASE_URL=https://llm-api.amd.com/OpenAI \
+PI_OPENAI_MODEL=your-model-id \
+PI_OPENAI_API_KEY="$LLM_GATEWAY_KEY" \
+PI_OPENAI_API_VERSION=preview \
+PI_OPENAI_USER=anandaku \
+npm run demo
+```
+
+The API key remains server-side. The direct mode sends streaming requests to `/chat/completions`, supports vLLM/OpenAI-compatible SSE, and uses provider completion usage when the gateway returns it. Set `PI_SPEED_DEMO_MODE=pi` to use the legacy local `pi --mode rpc` compatibility path instead. In Pi mode, `PI_BIN`, `PI_SPEED_DEMO_CWD`, and `PI_SPEED_DEMO_PERSIST=1` retain their previous meanings.
 
 ## Configuration
 
