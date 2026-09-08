@@ -52,7 +52,7 @@ PI_OPENAI_USER=anandaku \
 npm run demo
 ```
 
-The API key remains server-side. The direct mode sends streaming requests to `/chat/completions`, supports vLLM/OpenAI-compatible SSE, and uses provider completion usage when the gateway returns it. Set `PI_SPEED_DEMO_MODE=pi` to use the legacy local `pi --mode rpc` compatibility path instead. In Pi mode, `PI_BIN`, `PI_SPEED_DEMO_CWD`, and `PI_SPEED_DEMO_PERSIST=1` retain their previous meanings.
+The API key remains server-side. The direct mode sends streaming requests to `/chat/completions`, supports vLLM/OpenAI-compatible SSE, and uses provider completion usage when the gateway returns it. Set `PI_OPENAI_REASONING_EFFORT=high` when the gateway/model supports that request field; reasoning chunks are displayed when the endpoint exposes `reasoning_content`, `reasoning`, or `reasoning_text`. `PI_OPENAI_TIMEOUT_MS` defaults to `120000`. Set `PI_SPEED_DEMO_MODE=pi` to use the legacy local `pi --mode rpc` compatibility path instead. In Pi mode, `PI_BIN`, `PI_SPEED_DEMO_CWD`, and `PI_SPEED_DEMO_PERSIST=1` retain their previous meanings.
 
 ## Configuration
 

@@ -28,6 +28,7 @@ test("direct client streams OpenAI-compatible SSE and preserves provider usage",
       apiKey: "secret",
       apiVersion: "preview",
       user: "tester",
+      timeoutMs: 5_000,
       emit: (event) => events.push(event),
       onError: (message) => { throw new Error(message); },
     });

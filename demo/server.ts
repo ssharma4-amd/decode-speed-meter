@@ -46,6 +46,8 @@ const directClient = directMode ? new DirectInferenceClient({
   apiKey: process.env.PI_OPENAI_API_KEY || process.env.LLM_GATEWAY_KEY,
   apiVersion: process.env.PI_OPENAI_API_VERSION ?? (directIsAmdGateway ? "preview" : undefined),
   user: process.env.PI_OPENAI_USER ?? (directIsAmdGateway ? "anandaku" : undefined),
+  reasoningEffort: process.env.PI_OPENAI_REASONING_EFFORT,
+  timeoutMs: integer(process.env.PI_OPENAI_TIMEOUT_MS, 120_000, 1_000, 3_600_000),
   emit: emitRpc,
   onError: (message) => broadcast({ type: "bridge_error", message }),
 }) : undefined;

@@ -6,6 +6,8 @@ type DirectClientOptions = {
   apiKey?: string;
   apiVersion?: string;
   user?: string;
+  reasoningEffort?: string;
+  timeoutMs: number;
   emit: Emit;
   onError: (message: string) => void;
 };
@@ -72,7 +74,10 @@ export class DirectInferenceClient {
     this.streaming = true;
     let assistant = "";
     let usageOutput: number | undefined;
+    let receivedDelta = false;
+    let timedOut = false;
     let settled = false;
+    const timeout = setTimeout(() => { timedOut = true; controller.abort(); }, this.options.timeoutMs);
 
     const finish = (error?: string): void => {
       if (settled) return;
@@ -97,6 +102,7 @@ export class DirectInferenceClient {
           messages: this.history,
           stream: true,
           stream_options: { include_usage: true },
+          ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}),
         }),
         signal: controller.signal,
       });
@@ -121,6 +127,7 @@ export class DirectInferenceClient {
 
         const reasoning = firstText(delta, ["reasoning_content", "reasoning", "reasoning_text"]);
         if (reasoning) {
+          receivedDelta = true;
           this.options.emit({ type: "message_update", assistantMessageEvent: { type: "thinking_delta", delta: reasoning }, usage: usageEvent(usageOutput) });
         }
 
@@ -130,14 +137,18 @@ export class DirectInferenceClient {
             this.options.emit({ type: "message_update", assistantMessageEvent: { type: "text_start" } });
             phase = "output";
           }
+          receivedDelta = true;
           assistant += content;
           this.options.emit({ type: "message_update", assistantMessageEvent: { type: "text_delta", delta: content }, usage: usageEvent(usageOutput) });
         }
       }
-      finish();
+      finish(receivedDelta ? undefined : "Gateway completed without streaming any reasoning or output tokens.");
     } catch (error) {
-      if (controller.signal.aborted) finish();
+      if (timedOut) finish(`Gateway did not produce a response within ${Math.round(this.options.timeoutMs / 1000)} seconds.`);
+      else if (controller.signal.aborted) finish();
       else finish(error instanceof Error ? error.message : String(error));
+    } finally {
+      clearTimeout(timeout);
     }
   }
 
