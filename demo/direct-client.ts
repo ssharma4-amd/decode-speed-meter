@@ -101,7 +101,7 @@ export class DirectInferenceClient {
           model: this.options.model,
           messages: this.history,
           stream: true,
-          stream_options: { include_usage: true },
+          stream_options: { include_usage: true, continuous_usage_stats: true },
           ...(this.options.reasoningEffort ? { reasoning_effort: this.options.reasoningEffort } : {}),
         }),
         signal: controller.signal,

@@ -8,7 +8,8 @@ import { DirectInferenceClient } from "./direct-client";
 import { JsonlDecoder, isAllowedOrigin, MAX_CLIENT_MESSAGE_BYTES, validateClientCommand } from "./protocol";
 import { DemoTelemetry } from "./telemetry";
 
-const host = "127.0.0.1";
+const host = bindHost(process.env.PI_SPEED_DEMO_HOST);
+const browserHost = host === "0.0.0.0" || host === "::" ? "127.0.0.1" : host;
 const port = integer(process.env.PI_SPEED_DEMO_PORT, 8790, 1024, 65535);
 const cwd = process.env.PI_SPEED_DEMO_CWD || process.cwd();
 const piBin = process.env.PI_BIN || "pi";
@@ -127,7 +128,7 @@ const sampleTimer = setInterval(() => {
 sampleTimer.unref();
 
 server.listen(port, host, () => {
-  const url = `http://${host}:${port}/#token=${token}`;
+  const url = `http://${browserHost}:${port}/#token=${token}`;
   console.log("\nAMD Megakernels demo is ready.");
   console.log(`Open: ${url}`);
   console.log(`Mode: ${mode === "direct" ? "direct OpenAI-compatible gateway" : "Pi RPC compatibility"}`);
@@ -245,6 +246,12 @@ function shutdown(): void {
 function integer(raw: string | undefined, fallback: number, minimum: number, maximum: number): number {
   const parsed = raw === undefined ? NaN : Number(raw);
   return Number.isSafeInteger(parsed) && parsed >= minimum && parsed <= maximum ? parsed : fallback;
+}
+
+function bindHost(raw: string | undefined): string {
+  const value = raw?.trim() || "127.0.0.1";
+  if (value === "127.0.0.1" || value === "0.0.0.0" || value === "::1" || value === "::") return value;
+  throw new Error(`Unsupported PI_SPEED_DEMO_HOST: ${value}`);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

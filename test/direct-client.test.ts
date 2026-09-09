@@ -38,6 +38,10 @@ test("direct client streams OpenAI-compatible SSE and preserves provider usage",
     assert.equal((calls[0]?.init?.headers as Record<string, string>).authorization, "Bearer secret");
     const request = JSON.parse(String(calls[0]?.init?.body));
     assert.equal(request.stream, true);
+    assert.deepEqual(request.stream_options, {
+      include_usage: true,
+      continuous_usage_stats: true,
+    });
     assert.equal(request.messages[0].content, "Say hello");
     assert.equal(events.find((event) => event.type === "agent_start")?.type, "agent_start");
     assert.deepEqual(events.filter((event) => event.type === "message_update").map((event) => (event.assistantMessageEvent as Record<string, unknown>).type), ["thinking_start", "text_start", "text_delta", "text_delta"]);

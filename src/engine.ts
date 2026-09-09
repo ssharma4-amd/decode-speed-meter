@@ -56,6 +56,7 @@ export class TokenSpeedEngine {
   private _completedLiveTokens = 0;
   private _completedUsesEstimate = false;
   private _responseEstimatedTokens = 0;
+  private _responseStreamTokens = 0;
   private _responseProviderUsage?: number;
   private _responseActive = false;
   private _authoritativeTotal?: number;
@@ -82,6 +83,7 @@ export class TokenSpeedEngine {
     if (this._responseActive) this.commitResponse();
     this._responseActive = true;
     this._responseEstimatedTokens = 0;
+    this._responseStreamTokens = 0;
     this._responseProviderUsage = undefined;
   }
 
@@ -92,13 +94,20 @@ export class TokenSpeedEngine {
     if (!this._responseActive) this.beginAssistantResponse();
 
     const estimated = this._countStrategy === "estimate" ? this.estimateTokens(delta) : 1;
-    this.recordEstimatedTokens(estimated);
+    const providerTokens = this._useProviderTokens && usageOutput !== undefined && usageOutput > 0
+      ? usageOutput
+      : undefined;
+    const streamed = providerTokens === undefined
+      ? estimated
+      : Math.max(0, providerTokens - this._responseStreamTokens);
+    this.recordEstimatedTokens(streamed);
+    this._responseStreamTokens += streamed;
     this._responseEstimatedTokens += estimated;
 
     // Providers commonly initialize partial usage.output to 0 before reporting
     // progressive usage. Keep estimates until a meaningful positive value arrives.
-    if (this._useProviderTokens && usageOutput !== undefined && usageOutput > 0) {
-      this._responseProviderUsage = Math.max(this._responseProviderUsage ?? 0, usageOutput);
+    if (providerTokens !== undefined) {
+      this._responseProviderUsage = Math.max(this._responseProviderUsage ?? 0, providerTokens);
     }
   }
 

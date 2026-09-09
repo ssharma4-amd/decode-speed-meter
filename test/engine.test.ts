@@ -73,6 +73,17 @@ test("progressive usage is per response, ignores initialized zero, and never dou
   assert.equal(engine.totalEstimated, true);
 });
 
+test("progressive usage counts every provider token in batched stream deltas", () => {
+  const engine = makeEngine();
+  engine.start();
+  engine.recordDelta("first batch", 8);
+  engine.recordDelta("second batch", 16);
+
+  assert.equal(engine.graphMetrics().decodeTokens, 16);
+  assert.equal(engine.tokenCount, 16);
+  assert.equal(engine.totalEstimated, false);
+});
+
 test("live config updates preserve decode metrics and graph history", () => {
   const engine = makeEngine();
   engine.start();

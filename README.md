@@ -39,6 +39,7 @@ npm run demo
 ```
 
 Open the complete tokenized URL printed by the server. The demo defaults to port `8790`; use `PI_SPEED_DEMO_PORT=8800 npm run demo` to change it.
+It binds to `127.0.0.1` by default. Set `PI_SPEED_DEMO_HOST=0.0.0.0` only when the demo runs inside an isolated container and the host reaches it through the container's private network address.
 
 For the AMD gateway configured in `~/.codex/config.toml`:
 
