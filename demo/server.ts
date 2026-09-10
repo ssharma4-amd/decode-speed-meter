@@ -2,7 +2,8 @@ import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
-import { join } from "node:path";
+import { createRequire } from "node:module";
+import { dirname, join } from "node:path";
 import { WebSocket, WebSocketServer } from "ws";
 import { DirectInferenceClient } from "./direct-client";
 import { JsonlDecoder, isAllowedOrigin, MAX_CLIENT_MESSAGE_BYTES, validateClientCommand } from "./protocol";
@@ -15,13 +16,17 @@ const cwd = process.env.PI_SPEED_DEMO_CWD || process.cwd();
 const piBin = process.env.PI_BIN || "pi";
 const token = randomBytes(24).toString("base64url");
 const publicDir = join(process.cwd(), "demo", "public");
+const packageRequire = createRequire(__filename);
+const markedDir = dirname(packageRequire.resolve("marked/package.json"));
 const mode = process.env.PI_SPEED_DEMO_MODE || (process.env.LLM_GATEWAY_KEY || process.env.PI_OPENAI_BASE_URL || process.env.PI_OPENAI_MODEL ? "direct" : "pi");
 const directMode = mode === "direct";
 const staticFiles = new Map([
-  ["/", { file: "index.html", type: "text/html; charset=utf-8" }],
-  ["/index.html", { file: "index.html", type: "text/html; charset=utf-8" }],
-  ["/app.js", { file: "app.js", type: "text/javascript; charset=utf-8" }],
-  ["/styles.css", { file: "styles.css", type: "text/css; charset=utf-8" }],
+  ["/", { file: join(publicDir, "index.html"), type: "text/html; charset=utf-8" }],
+  ["/index.html", { file: join(publicDir, "index.html"), type: "text/html; charset=utf-8" }],
+  ["/app.js", { file: join(publicDir, "app.js"), type: "text/javascript; charset=utf-8" }],
+  ["/styles.css", { file: join(publicDir, "styles.css"), type: "text/css; charset=utf-8" }],
+  ["/vendor/marked.js", { file: join(markedDir, "lib", "marked.umd.js"), type: "text/javascript; charset=utf-8" }],
+  ["/vendor/dompurify.js", { file: packageRequire.resolve("dompurify/purify.min.js"), type: "text/javascript; charset=utf-8" }],
 ]);
 
 if (mode !== "direct" && mode !== "pi") throw new Error(`Unsupported PI_SPEED_DEMO_MODE: ${mode}`);
@@ -178,7 +183,7 @@ async function serve(request: IncomingMessage, response: ServerResponse): Promis
     return;
   }
   try {
-    const body = await readFile(join(publicDir, entry.file));
+    const body = await readFile(entry.file);
     response.writeHead(200, { ...securityHeaders(entry.type), "Cache-Control": "no-store", "Content-Length": body.length });
     response.end(body);
   } catch {

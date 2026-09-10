@@ -1,5 +1,14 @@
 const NS = "http://www.w3.org/2000/svg";
 const $ = (id) => document.getElementById(id);
+const markdownParser = window.marked;
+const markdownSanitizer = window.DOMPurify;
+const markdownRenderer = markdownParser?.Renderer ? new markdownParser.Renderer() : undefined;
+if (markdownRenderer) markdownRenderer.html = ({ text }) => escapeHtml(text);
+const markdownSanitizeOptions = {
+  USE_PROFILES: { html: true },
+  FORBID_TAGS: ["audio", "button", "embed", "form", "iframe", "input", "object", "script", "select", "source", "style", "textarea", "video"],
+  FORBID_ATTR: ["style"],
+};
 const elements = {
   telemetry: document.querySelector(".telemetry"), connection: $("connection"), thinking: $("thinking-indicator"), output: $("output-indicator"),
   current: $("current-speed"), currentLabel: $("current-label"), meanSpeed: $("mean-speed"), peak: $("peak-speed"), total: $("total-tokens"), totalKind: $("total-kind"), first: $("first-response"),
@@ -119,7 +128,7 @@ function handleMessageStart(message) {
 function handleMessageUpdate(update) {
   if (!update || typeof update !== "object") return;
   if (!activeAssistant) activeAssistant = appendAssistant();
-  if (update.type === "text_delta") activeAssistant.answer.textContent += update.delta || "";
+  if (update.type === "text_delta") appendAssistantText(activeAssistant, update.delta || "");
   if (update.type === "thinking_delta") {
     activeAssistant.thinking.hidden = false;
     activeAssistant.thinking.open = true;
@@ -144,13 +153,14 @@ function renderHistory(messages) {
 function renderAssistantMessage(message) {
   const view = appendAssistant();
   for (const block of Array.isArray(message.content) ? message.content : []) {
-    if (block?.type === "text") view.answer.textContent += block.text || "";
+    if (block?.type === "text") view.markdown += block.text || "";
     if (block?.type === "thinking") {
       view.thinking.hidden = false;
       view.thinkingText.textContent += block.thinking || "";
     }
     if (block?.type === "toolCall") updateTool(block.id, block.name, "prepared", block.arguments);
   }
+  renderAssistantMarkdown(view);
   activeAssistant = undefined;
 }
 
@@ -177,7 +187,52 @@ function appendAssistant() {
   const tools = node("div", "tools");
   message.append(thinking, answer, tools);
   elements.messages.append(message);
-  return { message, thinking, thinkingText, answer, tools };
+  return { message, thinking, thinkingText, answer, tools, markdown: "", renderPending: false };
+}
+
+function appendAssistantText(view, text) {
+  view.markdown += text;
+  if (view.renderPending) return;
+  view.renderPending = true;
+  window.requestAnimationFrame(() => {
+    view.renderPending = false;
+    if (!view.answer.isConnected) return;
+    renderAssistantMarkdown(view);
+  });
+}
+
+function renderAssistantMarkdown(view) {
+  if (!markdownParser?.parse || !markdownSanitizer?.sanitize) {
+    view.answer.textContent = view.markdown;
+    return;
+  }
+
+  const html = markdownParser.parse(view.markdown, { gfm: true, breaks: true, renderer: markdownRenderer });
+  view.answer.innerHTML = markdownSanitizer.sanitize(html, markdownSanitizeOptions);
+  decorateMarkdown(view.answer);
+}
+
+function decorateMarkdown(answer) {
+  for (const code of answer.querySelectorAll("pre > code")) {
+    const languageClass = Array.from(code.classList).find((name) => name.startsWith("language-"));
+    const language = languageClass?.slice("language-".length).replace(/[^a-z0-9_+#.-]/gi, "");
+    if (language) code.parentElement.dataset.language = language;
+  }
+
+  for (const table of answer.querySelectorAll("table")) {
+    if (table.parentElement?.classList.contains("table-scroll")) continue;
+    const wrapper = node("div", "table-scroll");
+    table.before(wrapper);
+    wrapper.append(table);
+  }
+
+  for (const link of answer.querySelectorAll("a[href]")) {
+    const url = new URL(link.href, location.href);
+    if (url.origin !== location.origin) {
+      link.target = "_blank";
+      link.rel = "noopener noreferrer";
+    }
+  }
 }
 
 function updateTool(id, name, state, payload) {
@@ -304,6 +359,7 @@ function safe(value) { return typeof value === "number" && Number.isFinite(value
 function formatNumber(value) { return safe(value).toLocaleString(undefined, { maximumFractionDigits: 1 }); }
 function duration(value) { const milliseconds = safe(value); return milliseconds ? milliseconds < 1000 ? `${Math.round(milliseconds)} ms` : `${(milliseconds / 1000).toFixed(2)} s` : "—"; }
 function stringify(value) { try { return typeof value === "string" ? value : JSON.stringify(value, null, 2); } catch { return String(value); } }
+function escapeHtml(value) { return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
 function extractText(content) { if (typeof content === "string") return content; return Array.isArray(content) ? content.filter((item) => item?.type === "text").map((item) => item.text || "").join("") : ""; }
 function node(tag, className = "", value = "") { const element = document.createElement(tag); if (className) element.className = className; if (value) element.textContent = value; return element; }
 function showNotice(message, timeout = 6500) { elements.notice.textContent = message; elements.notice.hidden = false; window.clearTimeout(showNotice.timer); showNotice.timer = window.setTimeout(() => { elements.notice.hidden = true; }, timeout); }

@@ -98,7 +98,37 @@ button:disabled { cursor: not-allowed; opacity: 0.46; }
 .message.user { justify-self: end; padding: 12px 16px; background: #24252c; color: #fff; white-space: pre-wrap; box-shadow: 0 0 0 1px rgba(239, 68, 68, 0.08) inset; }
 .message.assistant { justify-self: start; width: min(100%, 860px); padding: 4px 0 12px; }
 .message-label { margin-bottom: 7px; color: var(--muted); font-size: 12px; font-weight: 750; letter-spacing: 0.08em; text-transform: uppercase; }
-.answer { white-space: pre-wrap; overflow-wrap: anywhere; }
+.answer { min-width: 0; overflow-wrap: anywhere; color: #e8e8eb; line-height: 1.68; }
+.answer > :first-child { margin-top: 0; }
+.answer > :last-child { margin-bottom: 0; }
+.answer p { margin: 0 0 0.9em; }
+.answer h1, .answer h2, .answer h3, .answer h4 { margin: 1.35em 0 0.55em; color: #fff; line-height: 1.25; letter-spacing: -0.025em; }
+.answer h1 { padding-bottom: 0.35em; border-bottom: 1px solid var(--line); font-size: 1.65rem; }
+.answer h2 { padding-bottom: 0.3em; border-bottom: 1px solid rgba(255,255,255,0.08); font-size: 1.35rem; }
+.answer h3 { font-size: 1.14rem; }
+.answer h4 { font-size: 1rem; }
+.answer strong { color: #fff; font-weight: 750; }
+.answer em { color: #d6d6dc; }
+.answer ul, .answer ol { margin: 0.55em 0 1em; padding-left: 1.55em; }
+.answer li { margin: 0.28em 0; padding-left: 0.15em; }
+.answer li::marker { color: #ff746b; }
+.answer blockquote { margin: 1em 0; padding: 0.15em 0 0.15em 1em; border-left: 3px solid var(--accent); color: var(--muted); }
+.answer blockquote > :last-child { margin-bottom: 0; }
+.answer hr { height: 1px; margin: 1.6em 0; border: 0; background: linear-gradient(90deg, var(--accent), var(--line) 38%, transparent); }
+.answer a { color: #ff8b82; text-decoration-thickness: 1px; text-underline-offset: 0.2em; }
+.answer a:hover { color: #ffb0aa; }
+.answer code { border: 1px solid rgba(255,255,255,0.08); border-radius: 5px; background: #18191f; padding: 0.12em 0.38em; color: #ffd1cd; font: 0.88em/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
+.answer pre { position: relative; margin: 1em 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 11px; background: #111217; padding: 16px; }
+.answer pre[data-language] { padding-top: 34px; }
+.answer pre[data-language]::before { content: attr(data-language); position: absolute; top: 8px; right: 12px; color: var(--faint); font: 700 10px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: 0.08em; text-transform: uppercase; }
+.answer pre code { border: 0; border-radius: 0; background: transparent; padding: 0; color: #e6e6ea; font-size: 12.5px; white-space: pre; }
+.answer .table-scroll { max-width: 100%; margin: 1em 0; overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+.answer table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.answer th, .answer td { padding: 9px 12px; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.answer th:last-child, .answer td:last-child { border-right: 0; }
+.answer tr:last-child td { border-bottom: 0; }
+.answer th { background: #1b1c22; color: #fff; font-weight: 700; }
+.answer tbody tr:nth-child(even) { background: rgba(255,255,255,0.018); }
 .thinking { margin: 4px 0 12px; border-left: 2px solid #c9cdd4; padding-left: 12px; color: var(--muted); }
 .thinking summary { cursor: pointer; font-size: 13px; font-weight: 650; }
 .thinking pre, .tool pre { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
