@@ -134,6 +134,8 @@ button:disabled { cursor: not-allowed; opacity: 0.46; }
 .thinking pre, .tool pre { margin: 8px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; font: 12px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace; }
 .tool { margin: 9px 0; border: 1px solid var(--line); border-radius: 10px; background: rgba(24, 25, 31, 0.76); padding: 9px 11px; }
 .tool summary { cursor: pointer; color: var(--muted); font-size: 13px; font-weight: 650; }
+.tool.running { border-color: rgba(239, 68, 68, 0.42); }
+.tool[open] summary { color: var(--ink); }
 .tool.error { border-color: rgba(181, 68, 59, 0.35); }
 .notice { position: fixed; right: 22px; bottom: 132px; z-index: 30; max-width: min(430px, calc(100% - 44px)); border: 1px solid #e4c3bd; border-radius: 12px; background: #fff4f1; color: #812d26; padding: 11px 14px; box-shadow: var(--shadow); }
 

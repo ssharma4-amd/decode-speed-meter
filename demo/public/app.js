@@ -23,6 +23,8 @@ let busy = false;
 let reconnectDelay = 700;
 let activeAssistant;
 const toolElements = new Map();
+const autoExpandedToolIds = [];
+const autoExpandedToolLimit = 2;
 
 buildGrid();
 connect();
@@ -112,9 +114,9 @@ function handleRpc(event) {
   }
   if (event.type === "message_start") return handleMessageStart(event.message);
   if (event.type === "message_update") return handleMessageUpdate(event.assistantMessageEvent);
-  if (event.type === "tool_execution_start") return updateTool(event.toolCallId, event.toolName, "running", event.args);
-  if (event.type === "tool_execution_update") return updateTool(event.toolCallId, event.toolName, "running", event.partialResult);
-  if (event.type === "tool_execution_end") return updateTool(event.toolCallId, event.toolName, event.isError ? "error" : "complete", event.result);
+  if (event.type === "tool_execution_start") return updateTool(event.toolCallId, event.toolName, "running", { args: event.args });
+  if (event.type === "tool_execution_update") return updateTool(event.toolCallId, event.toolName, "running", { partialResult: event.partialResult });
+  if (event.type === "tool_execution_end") return updateTool(event.toolCallId, event.toolName, event.isError ? "error" : "complete", { result: event.result });
   if (event.type === "extension_ui_request") return handleExtensionUi(event);
   if (event.type === "extension_error") showNotice(`Extension error: ${event.error || "unknown error"}`);
 }
@@ -136,7 +138,7 @@ function handleMessageUpdate(update) {
   }
   if (update.type === "toolcall_start") updateTool(update.id, update.toolName, "preparing");
   if (update.type === "toolcall_delta") updateToolArgument(update.contentIndex, update.delta || "");
-  if (update.type === "toolcall_end" && update.toolCall) updateTool(update.toolCall.id, update.toolCall.name, "prepared", update.toolCall.arguments);
+  if (update.type === "toolcall_end" && update.toolCall) updateTool(update.toolCall.id, update.toolCall.name, "prepared", { args: update.toolCall.arguments });
   scrollToLatest();
 }
 
@@ -146,7 +148,7 @@ function renderHistory(messages) {
   for (const message of messages) {
     if (message?.role === "user") appendUser(extractText(message.content));
     if (message?.role === "assistant") renderAssistantMessage(message);
-    if (message?.role === "toolResult") updateTool(message.toolCallId, message.toolName, message.isError ? "error" : "complete", message.content);
+    if (message?.role === "toolResult") updateTool(message.toolCallId, message.toolName, message.isError ? "error" : "complete", { result: message });
   }
 }
 
@@ -158,7 +160,7 @@ function renderAssistantMessage(message) {
       view.thinking.hidden = false;
       view.thinkingText.textContent += block.thinking || "";
     }
-    if (block?.type === "toolCall") updateTool(block.id, block.name, "prepared", block.arguments);
+    if (block?.type === "toolCall") updateTool(block.id, block.name, "prepared", { args: block.arguments });
   }
   renderAssistantMarkdown(view);
   activeAssistant = undefined;
@@ -235,7 +237,7 @@ function decorateMarkdown(answer) {
   }
 }
 
-function updateTool(id, name, state, payload) {
+function updateTool(id, name, state, update = {}) {
   if (!id) return;
   if (!activeAssistant) activeAssistant = appendAssistant();
   let view = toolElements.get(id);
@@ -246,12 +248,18 @@ function updateTool(id, name, state, payload) {
     const output = node("pre");
     details.append(summary, output);
     activeAssistant.tools.append(details);
-    view = { details, summary, output };
+    view = { details, summary, output, name: name || "tool", args: undefined, result: undefined, partialResult: undefined };
     toolElements.set(id, view);
   }
+  if (name) view.name = name;
+  if (update.args !== undefined) view.args = update.args;
+  if (update.result !== undefined) view.result = update.result;
+  if (update.partialResult !== undefined) view.partialResult = update.partialResult;
   view.details.classList.toggle("error", state === "error");
-  view.summary.textContent = `${name || "tool"} · ${state}`;
-  if (payload !== undefined) view.output.textContent = stringify(payload);
+  view.details.classList.toggle("running", state === "preparing" || state === "prepared" || state === "running");
+  view.summary.textContent = toolSummary(view.name, state, view.args, view.result);
+  view.output.textContent = toolOutput(view.name, view.args, view.result, view.partialResult, state);
+  keepToolExpanded(id);
   scrollToLatest();
 }
 
@@ -351,6 +359,7 @@ function clearConversation() {
   elements.welcome.hidden = false;
   activeAssistant = undefined;
   toolElements.clear();
+  autoExpandedToolIds.length = 0;
 }
 
 function hideWelcome() { elements.welcome.hidden = true; }
@@ -359,6 +368,86 @@ function safe(value) { return typeof value === "number" && Number.isFinite(value
 function formatNumber(value) { return safe(value).toLocaleString(undefined, { maximumFractionDigits: 1 }); }
 function duration(value) { const milliseconds = safe(value); return milliseconds ? milliseconds < 1000 ? `${Math.round(milliseconds)} ms` : `${(milliseconds / 1000).toFixed(2)} s` : "—"; }
 function stringify(value) { try { return typeof value === "string" ? value : JSON.stringify(value, null, 2); } catch { return String(value); } }
+function keepToolExpanded(id) {
+  const previousIndex = autoExpandedToolIds.indexOf(id);
+  if (previousIndex >= 0) autoExpandedToolIds.splice(previousIndex, 1);
+  autoExpandedToolIds.push(id);
+  while (autoExpandedToolIds.length > autoExpandedToolLimit) {
+    const staleId = autoExpandedToolIds.shift();
+    const stale = toolElements.get(staleId);
+    if (stale) stale.details.open = false;
+  }
+  const current = toolElements.get(id);
+  if (current) current.details.open = true;
+}
+function toolSummary(name, state, args, result) {
+  const normalizedName = String(name || "tool").toLowerCase();
+  const path = compactPath(args?.path ?? args?.file_path);
+  if (normalizedName === "write" && path) {
+    const action = state === "error" ? "Write failed" : state === "complete" ? "Wrote" : "Writing";
+    const bytes = typeof args?.content === "string" ? new TextEncoder().encode(args.content).length : undefined;
+    return `${action} ${path}${bytes === undefined ? "" : ` · ${formatBytes(bytes)}`}`;
+  }
+  if (normalizedName === "edit" && path) {
+    const action = state === "error" ? "Edit failed" : state === "complete" ? "Edited" : "Editing";
+    const stats = diffStats(result?.details?.diff) ?? editStats(args);
+    return `${action} ${path}${stats ? ` · +${stats.additions} / −${stats.removals}` : ""}`;
+  }
+  return `${name || "tool"} · ${state}`;
+}
+function toolOutput(name, args, result, partialResult, state) {
+  if (state === "error") return resultText(result) || stringify(result);
+  const normalizedName = String(name || "").toLowerCase();
+  if (normalizedName === "write" && typeof args?.content === "string") return previewText(args.content, 24);
+  if (normalizedName === "edit") {
+    const diff = result?.details?.diff ?? editPreview(args);
+    if (diff) return previewText(diff, 80);
+  }
+  const payload = result ?? partialResult ?? args;
+  return payload === undefined ? "" : resultText(payload) || stringify(payload);
+}
+function resultText(value) {
+  const content = Array.isArray(value?.content) ? value.content : [];
+  return content.filter((item) => item?.type === "text").map((item) => item.text || "").join("\n");
+}
+function editPreview(args) {
+  const edits = Array.isArray(args?.edits)
+    ? args.edits
+    : typeof args?.oldText === "string" && typeof args?.newText === "string"
+      ? [{ oldText: args.oldText, newText: args.newText }]
+      : [];
+  return edits.map((edit) => `${prefixLines(edit?.oldText, "-")}\n${prefixLines(edit?.newText, "+")}`).join("\n");
+}
+function editStats(args) {
+  const preview = editPreview(args);
+  return preview ? diffStats(preview) : undefined;
+}
+function diffStats(diff) {
+  if (typeof diff !== "string" || !diff) return undefined;
+  let additions = 0;
+  let removals = 0;
+  for (const line of diff.split("\n")) {
+    if (line.startsWith("+") && !line.startsWith("+++")) additions += 1;
+    if (line.startsWith("-") && !line.startsWith("---")) removals += 1;
+  }
+  return { additions, removals };
+}
+function prefixLines(value, prefix) { return typeof value === "string" ? value.split("\n").map((line) => `${prefix}${line}`).join("\n") : ""; }
+function previewText(value, maximumLines) {
+  const lines = String(value).split("\n");
+  if (lines.length <= maximumLines) return value;
+  return `${lines.slice(0, maximumLines).join("\n")}\n… ${lines.length - maximumLines} more lines`;
+}
+function compactPath(value) {
+  if (typeof value !== "string" || !value) return "";
+  const parts = value.replaceAll("\\", "/").split("/").filter(Boolean);
+  return parts.length <= 3 ? parts.join("/") : `…/${parts.slice(-3).join("/")}`;
+}
+function formatBytes(value) {
+  if (value < 1024) return `${value} B`;
+  if (value < 1024 ** 2) return `${(value / 1024).toFixed(value < 10 * 1024 ? 1 : 0)} KB`;
+  return `${(value / 1024 ** 2).toFixed(1)} MB`;
+}
 function escapeHtml(value) { return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]); }
 function extractText(content) { if (typeof content === "string") return content; return Array.isArray(content) ? content.filter((item) => item?.type === "text").map((item) => item.text || "").join("") : ""; }
 function node(tag, className = "", value = "") { const element = document.createElement(tag); if (className) element.className = className; if (value) element.textContent = value; return element; }
