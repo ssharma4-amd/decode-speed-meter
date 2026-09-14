@@ -28,6 +28,7 @@ test("demo telemetry captures a short RPC response and authoritative total", () 
     assert.equal(snapshot.ttftMs, 150);
     assert.ok(snapshot.timeline.length >= 2);
     assert.ok(snapshot.peakTps > 0);
+    assert.ok(snapshot.peakTps >= snapshot.meanTps);
     assert.equal(snapshot.wallMs, 250);
   } finally {
     Date.now = originalNow;

@@ -19,6 +19,22 @@ test("uniform sampler records decode zeroes, bounds history, and retains full-ru
   assert.ok(sampler.getSamples().every((sample) => sample.timestamp >= 3000));
   assert.equal(sampler.peakTps, 40);
   assert.ok(sampler.smoothedPeakTps > 8 && sampler.smoothedPeakTps < 9);
+  assert.equal(sampler.sustainedPeakTps, 40);
+});
+
+test("sustained peak uses active rolling time and cannot trail the request mean", () => {
+  const sampler = new UniformSpeedSampler(30000, 100);
+  sampler.sample(0, 0, 0);
+  const shortTurn = sampler.sample(100, 50, 500);
+
+  assert.equal(shortTurn.decodeTps, 500);
+  assert.ok(shortTurn.smoothedTps! < shortTurn.meanTps);
+  assert.equal(shortTurn.sustainedTps, 500);
+  assert.equal(sampler.sustainedPeakTps, 500);
+
+  for (let at = 200; at <= 1200; at += 100) sampler.sample(at, 50, 50_000 / at);
+  assert.equal(sampler.getSamples().at(-1)?.sustainedTps, 0);
+  assert.equal(sampler.sustainedPeakTps, 500);
 });
 
 test("rebase prevents a paused interval from becoming an artificial low speed", () => {

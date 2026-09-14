@@ -117,3 +117,25 @@ test("tool pause excludes decode time and completed history/peak freeze", () => 
   assert.deepEqual(engine.graphMetrics().samples, frozen);
   assert.equal(engine.graphMetrics().peakTps, peak);
 });
+
+test("completed turn peak is never lower than its whole-turn average", () => {
+  const engine = makeEngine();
+  const originalNow = Date.now;
+  let now = 1_000;
+  Date.now = () => now;
+  try {
+    engine.start();
+    engine.sampleGraph(now);
+    now = 1_100;
+    engine.recordDelta("provider batch", 50);
+    engine.sampleGraph(now);
+    engine.stop();
+
+    const metrics = engine.graphMetrics();
+    assert.equal(metrics.meanTps, 500);
+    assert.equal(metrics.peakTps, 500);
+    assert.ok(metrics.samples.at(-1)!.smoothedTps! < metrics.meanTps);
+  } finally {
+    Date.now = originalNow;
+  }
+});

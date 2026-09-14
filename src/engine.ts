@@ -185,9 +185,10 @@ export class TokenSpeedEngine {
     return {
       samples: this._sampler.getSamples(),
       currentTps: this._sampler.currentTps,
-      // UI peak follows the smoothed graph series; raw interval peaks remain
-      // available through the sampler for diagnostics without alarming users.
-      peakTps: this._sampler.smoothedPeakTps,
+      // Current follows the responsive EMA, while Peak reports the strongest
+      // sustained one-second window. Keep Peak >= the request-wide mean even
+      // between timer samples so the completed summary stays intuitive.
+      peakTps: Math.max(this._sampler.sustainedPeakTps, this.meanTps),
       meanTps: this.meanTps,
       decodeTokens: this._estimatedDecodeTokens,
       totalTokens: this.tokenCount,
